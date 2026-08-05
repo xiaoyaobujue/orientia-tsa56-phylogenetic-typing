@@ -1,0 +1,45 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      PHYLO_PUBLIC_FRONTEND_URL: http://localhost:3200/
+      PHYLO_PUBLIC_CORS_ORIGINS: http://localhost:3200
+      PHYLO_PUBLIC_RESULTS_DIR: /app/results
+      PHYLO_PUBLIC_RETENTION_HOURS: "24"
+      PHYLO_PUBLIC_MAX_CONCURRENT_JOBS: "1"
+      PHYLO_PUBLIC_IQTREE_THREADS: "${PHYLO_PUBLIC_IQTREE_THREADS:-AUTO}"
+    ports:
+      - "127.0.0.1:8200:8200"
+    volumes:
+      - public-results:/app/results
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8200/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_PHYLO_PUBLIC_API_BASE_URL: http://localhost:8200
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3200:3200"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3200/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  public-results:

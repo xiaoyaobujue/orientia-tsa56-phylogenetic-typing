@@ -1,0 +1,22 @@
+FROM mambaorg/micromamba:2.5.0
+
+COPY --chown=$MAMBA_USER:$MAMBA_USER requirements.lock /tmp/requirements.lock
+RUN micromamba install -y -n base -c conda-forge -c bioconda \
+      python=3.12 pip mafft=7.525 iqtree=3.0.1 \
+    && micromamba clean --all --yes
+
+ARG MAMBA_DOCKERFILE_ACTIVATE=1
+RUN pip install --no-cache-dir -r /tmp/requirements.lock
+
+WORKDIR /app
+COPY --chown=$MAMBA_USER:$MAMBA_USER backend backend
+COPY --chown=$MAMBA_USER:$MAMBA_USER data data
+
+ENV PHYLO_PUBLIC_FRONTEND_URL=http://localhost:3200/ \
+    PHYLO_PUBLIC_RESULTS_DIR=/app/results \
+    PHYLO_PUBLIC_RETENTION_HOURS=24 \
+    PHYLO_PUBLIC_MAX_CONCURRENT_JOBS=1 \
+    PHYLO_PUBLIC_IQTREE_THREADS=AUTO
+
+EXPOSE 8200
+CMD ["uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8200"]

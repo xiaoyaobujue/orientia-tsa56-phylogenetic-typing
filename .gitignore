@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+.venv/
+
+# Runtime data
+results/
+runtime/
+logs/
+*.pid
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/.vinext/
+frontend/.vite/
+
+# Local configuration and editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local implementation notes (not part of the publication release)
+task_plan.md
+findings.md
+progress.md
+
+# Scientific tool outputs outside anonymous results
+*.ckp.gz
+*.contree
+*.iqtree
+*.log
+*.mldist
+*.model.gz
+*.treefile
+*.ufboot

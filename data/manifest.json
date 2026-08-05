@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "article_workflow": "article_phylogenetic_v1_strict",
+  "files": [
+    {
+      "path": "60ref_151-850.fas",
+      "role": "fixed aligned phylogenetic reference",
+      "records": 60,
+      "alignment_columns": 898,
+      "sha256": "6b3db5e28365d176bee8e3b59da80ff1a6a42193860fbcb3fa354d228395f1d3"
+    },
+    {
+      "path": "355ref-56kDa.fas",
+      "role": "trace orientation and assembly QC reference",
+      "sha256": "e93b524ec35867a3fc1909816bf6bc77a257f9fc96f94f5a119bd146c0591330"
+    },
+    {
+      "path": "355ref-genotype-map.xlsx",
+      "role": "reference annotation map",
+      "sha256": "1ca56e9bccc3282acf0609363a444817a739eefe0781c5059a48284c700fdb0c"
+    }
+  ]
+}
