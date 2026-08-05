@@ -2191,7 +2191,7 @@ th, td {{ border: 1px solid #ddd; padding: 6px 9px; font-size: 13px; }}
 th {{ background: #f3f4f6; }}
 iframe {{ width: 100%; height: 900px; border: 1px solid #ddd; margin-top: 20px; }}
 </style>
-<h1>{escape_xml(result.sample_id)} article-method phylogenetic typing report</h1>
+<h1>{escape_xml(result.sample_id)} phylogenetic typing report</h1>
 <section class="summary">
 <div><b>Candidate new genotype</b><br>{escape_xml(report['predicted_new_genotype'])}</div>
 <div><b>Candidate old genotype</b><br>{escape_xml(report['predicted_old_genotype'])}</div>

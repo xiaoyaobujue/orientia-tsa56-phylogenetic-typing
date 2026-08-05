@@ -2,20 +2,20 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-这是一个在用户电脑本地运行、用于论文复现与科研共享的恙虫东方体（*Orientia tsutsugamushi*）TSA56 系统发育分型工具。论文公开版只提供文章锁定的 V1.0 流程，不提供快速分型、BLAST 判型或 placement 判型。
+这是一个用于恙虫东方体（*Orientia tsutsugamushi*）TSA56 系统发育分型的可复现本地网页工具。软件支持 Sanger AB1 峰图和 FASTA 序列输入，输出参考比对、IQ-TREE 系统发育树、基因型判定及可下载的分析记录。
 
 ## 分析流程
 
 1. AB1 输入先进行峰图质控、方向判断与双向拼接；FASTA 输入直接从比对开始。
-2. 使用 `mafft --add --keeplength` 将样本加入固定 60 条参考序列比对。
+2. 使用 `mafft --add --keeplength` 将样本加入整理后的 60 条参考序列比对。
 3. IQ-TREE 固定使用 `TVM+F+R5`、1,000 次 ultrafast bootstrap 和 `-bnni`，线程由 `-T AUTO` 按用户电脑自动分配。
-4. 最终基因型只能由参考锚定的系统发育树证据判定；支持不足或证据不一致时必须人工复核。
+4. 根据参考锚定的系统发育证据判定基因型；支持不足或证据不一致的结果需人工复核。
 
-相似性比较只可用于 AB1 方向和拼接质控，不能参与最终基因型判定。详见[分析方法](docs/zh-CN/METHODS.md)。
+完整分析规范见[分析方法](docs/zh-CN/METHODS.md)。
 
-## 推荐本地安装方式：Docker
+## 安装
 
-如果用户电脑没有 Python、Node.js、MAFFT 或 IQ-TREE，只需要安装 Docker Desktop。第一次构建容器需要联网，之后分析在用户自己的电脑上运行，不需要公网 IP。
+推荐使用 Docker Desktop 或带 Compose 的 Docker Engine。容器已配置应用运行环境、MAFFT 7.525 和 IQ-TREE 3.0.1。
 
 ### Windows
 
@@ -50,15 +50,9 @@ sh ./scripts/start_docker.sh
 
 详见[输入与输出](docs/zh-CN/INPUT_OUTPUT.md)。本工具仅供科研使用，自动结果不能替代人工树图复核。
 
-## 中英文切换
+## 文档
 
-网站右上角提供 `EN / 中文` 切换，并在浏览器中记住用户选择。非中文浏览器默认显示英文。完整资料提供[英文版](docs/)和[中文版](docs/zh-CN/)。
-
-## 发布形式
-
-GitHub 仓库及带版本号的 Releases 用于分发源代码、固定参考、校验值、容器、说明和测试。用户下载后在本地运行，不需要 GitHub Pages 或公网分析服务器。可以把 GitHub Release 连接到 Zenodo 生成软件 DOI。
-
-论文发表前需要在 `CITATION.cff` 中补齐正式作者、仓库地址和文章/预印本 DOI。详见[引用与论文写法](docs/zh-CN/CITATION.md)和[验证说明](docs/zh-CN/VALIDATION.md)。
+[本地安装](docs/zh-CN/LOCAL_INSTALLATION.md) · [分析方法](docs/zh-CN/METHODS.md) · [输入与输出](docs/zh-CN/INPUT_OUTPUT.md) · [验证说明](docs/zh-CN/VALIDATION.md) · [故障排查](docs/zh-CN/TROUBLESHOOTING.md) · [引用](docs/zh-CN/CITATION.md)
 
 ## 许可
 

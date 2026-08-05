@@ -47,10 +47,10 @@ from pipeline import (  # noqa: E402
     write_fasta,
     write_report,
 )
-PROJECT_ID = "orientia-tsa56-article-typing-v1"
+PROJECT_ID = "orientia-tsa56-phylogenetic-typing"
 PROJECT_NAME = "恙虫东方体 TSA56 系统发育分型工具"
 PROJECT_NAME_EN = "Orientia TSA56 Phylogenetic Typing"
-PROJECT_VERSION = "1.0.0"
+PROJECT_VERSION = "1.0.1"
 API_SERVICE_ID = f"{PROJECT_ID}-api"
 FRONTEND_URL = os.environ.get(
     "PHYLO_PUBLIC_FRONTEND_URL",

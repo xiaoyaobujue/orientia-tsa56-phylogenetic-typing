@@ -22,8 +22,8 @@
 
 ## Scientific validation boundary
 
-Passing software tests shows that the implementation follows the locked workflow and preserves the evidence chain. It does not by itself establish diagnostic performance, clinical validity, generalisability to new populations, or an externally validated classification cutoff. Manuscript claims should be limited to the study's own validation design and results.
+Passing software tests shows that the implementation follows the specified workflow and preserves the evidence chain. It does not by itself establish diagnostic performance, clinical validity, generalisability to new populations, or an externally validated classification cutoff. Manuscript claims should be limited to the study's own validation design and results.
 
-Before a release used by a publication, archive a validation set, expected genotype calls, software/container digests and a release-specific test report. Manually review representative trees and all ambiguous/discordant results.
+Release-level reproducibility records comprise the validation set, expected genotype calls, software/container digests and a version-specific test report. Representative trees and all ambiguous or discordant results require manual review.
 
 Thread allocation is a runtime resource choice rather than a genotype parameter. A release validation should still record the machine CPU count, effective IQ-TREE thread specification and wall-clock time.

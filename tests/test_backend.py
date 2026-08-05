@@ -182,8 +182,8 @@ def test_health_endpoint_reports_ready():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["project_id"] == "orientia-tsa56-article-typing-v1"
-    assert body["project_version"] == "1.0.0"
+    assert body["project_id"] == "orientia-tsa56-phylogenetic-typing"
+    assert body["project_version"] == "1.0.1"
     assert body["status"] == "ok"
     assert body["reference_available"] is True
     assert body["reference_name"] == "355ref-56kDa.fas"

@@ -1,5 +1,5 @@
 export const ARTICLE_MODE = "v1_strict_article" as const;
-export const PROJECT_ID = "orientia-tsa56-article-typing-v1" as const;
+export const PROJECT_ID = "orientia-tsa56-phylogenetic-typing" as const;
 export const PROJECT_VERSION = "1.0.0" as const;
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";

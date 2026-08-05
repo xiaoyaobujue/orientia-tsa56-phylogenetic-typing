@@ -33,7 +33,7 @@ def test_public_runtime_configuration_has_no_author_machine_path():
     assert "PHYLO_PUBLIC_IQTREE_THREADS=AUTO" in combined
 
 
-def test_bilingual_publication_documentation_is_complete():
+def test_bilingual_documentation_is_complete():
     english = {
         "README.md",
         "LOCAL_INSTALLATION.md",
@@ -41,7 +41,6 @@ def test_bilingual_publication_documentation_is_complete():
         "INPUT_OUTPUT.md",
         "VALIDATION.md",
         "PRIVACY_SECURITY.md",
-        "DEPLOYMENT.md",
         "TROUBLESHOOTING.md",
         "CITATION.md",
     }

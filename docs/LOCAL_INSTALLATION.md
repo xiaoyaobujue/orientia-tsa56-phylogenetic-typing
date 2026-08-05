@@ -5,8 +5,8 @@
 | Situation | Recommended path |
 |---|---|
 | No scientific software installed | Docker Desktop/Engine with Compose |
-| Windows publication user | Docker Desktop |
-| macOS/Linux publication user | Docker Desktop or Docker Engine with Compose |
+| Windows user | Docker Desktop |
+| macOS/Linux user | Docker Desktop or Docker Engine with Compose |
 | Developer with Python, Node.js, MAFFT and IQ-TREE already installed | Native advanced path |
 
 ## Environment check
@@ -49,10 +49,10 @@ The default is `PHYLO_PUBLIC_IQTREE_THREADS=AUTO`. IQ-TREE adapts to the current
 PHYLO_PUBLIC_IQTREE_THREADS=8
 ```
 
-Do not change the fixed model, 1,000-replicate UFBoot, BNNI or reference panel for article-standard results.
+Keep the specified model, 1,000-replicate UFBoot, BNNI and reference panel unchanged when reproducing the analysis.
 
 ## Native advanced path
 
 Windows developers may run `scripts/setup_native.ps1` to create a project-local Python environment and install frontend dependencies. MAFFT 7.525 and IQ-TREE 3.0.1 must already be on `PATH` or available through explicitly configured `PHYLO_PUBLIC_MAFFT_WSL_BINARY` and `PHYLO_PUBLIC_IQTREE_WSL_BINARY` paths. Run `scripts/start_local.ps1` afterward.
 
-The native path is not the zero-environment publication path and may require platform-specific bioinformatics installation. Docker is the reproducibility baseline.
+The native path may require platform-specific bioinformatics installation. Docker is the recommended reproducibility baseline.
