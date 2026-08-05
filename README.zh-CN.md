@@ -4,6 +4,10 @@
 
 这是一个用于恙虫东方体（*Orientia tsutsugamushi*）TSA56 系统发育分型的可复现本地网页工具。软件支持 Sanger AB1 峰图和 FASTA 序列输入，输出参考比对、IQ-TREE 系统发育树、基因型判定及可下载的分析记录。
 
+## 分析界面
+
+![恙虫东方体 TSA56 系统发育分型分析界面](docs/images/analysis-interface.png)
+
 ## 分析流程
 
 1. AB1 输入先进行峰图质控、方向判断与双向拼接；FASTA 输入直接从比对开始。

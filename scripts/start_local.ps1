@@ -59,7 +59,7 @@ function Get-ListenerProcessId {
 
 if (Test-Url -Url "http://127.0.0.1:8200/health") {
     $health = Invoke-RestMethod -Uri "http://127.0.0.1:8200/health" -TimeoutSec 5
-    if ($health.project_id -ne "orientia-tsa56-article-typing-v1") {
+    if ($health.project_id -ne "orientia-tsa56-phylogenetic-typing") {
         throw "Port 8200 is occupied by another HTTP service."
     }
 }
@@ -112,7 +112,7 @@ $servicePids.updated_at = (Get-Date).ToString("o")
 $servicePids | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding utf8
 
 $url = "http://localhost:3200/"
-Write-Host "Publication V1 typing website is running:" -ForegroundColor Green
+Write-Host "Orientia TSA56 typing website is running:" -ForegroundColor Green
 Write-Host $url -ForegroundColor Cyan
 
 if (-not $NoBrowser) { Start-Process $url }

@@ -4,8 +4,8 @@ title: "Orientia TSA56 Phylogenetic Typing"
 type: software
 authors:
   - name: "Orientia TSA56 Phylogenetic Typing contributors"
-version: 1.0.1
-date-released: 2026-08-05
+version: 1.0.2
+date-released: 2026-08-06
 license: MIT
 abstract: "A reproducible MAFFT and IQ-TREE workflow for phylogenetic typing of Orientia tsutsugamushi TSA56 sequences."
 repository-code: "https://github.com/xiaoyaobujue/orientia-tsa56-phylogenetic-typing"

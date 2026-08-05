@@ -4,7 +4,7 @@ $project = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $pidFile = Join-Path $project "runtime\local\services.json"
 
 if (-not (Test-Path -LiteralPath $pidFile)) {
-    Write-Host "No publication V1 services are registered."
+    Write-Host "No local typing services are registered."
     exit 0
 }
 
@@ -22,4 +22,4 @@ foreach ($processId in $processIds) {
 }
 
 Remove-Item -LiteralPath $pidFile -Force
-Write-Host "Publication V1 services stopped."
+Write-Host "Local typing services stopped."

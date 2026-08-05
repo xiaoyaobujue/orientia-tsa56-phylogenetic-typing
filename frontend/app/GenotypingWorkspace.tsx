@@ -249,6 +249,10 @@ export function GenotypingWorkspace() {
     import.meta as ImportMeta & { env?: Record<string, string | undefined> }
   ).env?.VITE_PUBLIC_GITHUB_URL
     || "https://github.com/xiaoyaobujue/orientia-tsa56-phylogenetic-typing";
+  const repositoryUrl = githubUrl.replace(/\/+$/, "");
+  const documentationPath = locale === "zh" ? "docs/zh-CN" : "docs";
+  const methodsUrl = `${repositoryUrl}/blob/main/${documentationPath}/METHODS.md`;
+  const citationUrl = `${repositoryUrl}/blob/main/${documentationPath}/CITATION.md`;
 
   useEffect(() => {
     const localeTimer = window.setTimeout(() => {
@@ -409,9 +413,9 @@ export function GenotypingWorkspace() {
             <button type="button" className={locale === "en" ? "active" : ""} aria-pressed={locale === "en"} onClick={() => setLanguage("en")}>EN</button>
             <button type="button" className={locale === "zh" ? "active" : ""} aria-pressed={locale === "zh"} onClick={() => setLanguage("zh")}>中文</button>
           </div>
-          <a href="#workflow">{t.methods}</a>
-          <a href="#citation">{t.citation}</a>
-          <a href={githubUrl} target="_blank" rel="noreferrer">GitHub</a>
+          <a href={methodsUrl} target="_blank" rel="noreferrer">{t.methods}</a>
+          <a href={citationUrl} target="_blank" rel="noreferrer">{t.citation}</a>
+          <a href={repositoryUrl} target="_blank" rel="noreferrer">GitHub</a>
         </nav>
       </header>
 

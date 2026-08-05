@@ -12,6 +12,6 @@
 
 ## Code Availability 建议文字
 
-> 恙虫东方体 TSA56 系统发育分型软件、参考序列清单、容器配置、文档和测试可从 https://github.com/xiaoyaobujue/orientia-tsa56-phylogenetic-typing 获取（版本 1.0.1）。
+> 恙虫东方体 TSA56 系统发育分型软件、参考序列清单、容器配置、文档和测试可从 https://github.com/xiaoyaobujue/orientia-tsa56-phylogenetic-typing 获取（版本 1.0.2）。
 
 论文应注明实际使用的软件版本，诊断或临床相关结论不得超出研究证据范围。

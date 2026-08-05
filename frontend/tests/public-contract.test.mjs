@@ -23,3 +23,10 @@ test("publication interface provides persistent English and Chinese modes", () =
   assert.match(workspaceSource, /navigator\.language/);
   assert.match(workspaceSource, /aria-label="Language \/ 语言"/);
 });
+
+test("methods and citation links open the matching language documentation", () => {
+  assert.match(workspaceSource, /locale === "zh" \? "docs\/zh-CN" : "docs"/);
+  assert.match(workspaceSource, /\/METHODS\.md/);
+  assert.match(workspaceSource, /\/CITATION\.md/);
+  assert.doesNotMatch(workspaceSource, /href="#(?:workflow|citation)"/);
+});

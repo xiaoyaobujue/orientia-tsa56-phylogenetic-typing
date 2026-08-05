@@ -4,6 +4,10 @@
 
 A reproducible local web application for phylogenetic typing of *Orientia tsutsugamushi* TSA56 sequences. It accepts Sanger AB1 chromatograms and FASTA sequences and produces reference-aligned sequences, IQ-TREE phylogenies, genotype assignments and downloadable analysis records.
 
+## Analysis interface
+
+![Orientia TSA56 Phylogenetic Typing analysis interface](docs/images/analysis-interface.png)
+
 ## Analysis workflow
 
 1. AB1 input undergoes chromatogram QC, orientation and paired-read assembly; FASTA input starts at alignment.
