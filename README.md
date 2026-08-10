@@ -1,5 +1,7 @@
 # Orientia TSA56 Phylogenetic Typing V1
 
+**Website:** [https://orientia-tsutsugamushi-typing.org/](https://orientia-tsutsugamushi-typing.org/)
+
 [English](README.md) | [简体中文](README.zh-CN.md)
 
 A reproducible local web application for phylogenetic typing of *Orientia tsutsugamushi* TSA56 sequences. It accepts Sanger AB1 chromatograms and FASTA sequences and produces reference-aligned sequences, IQ-TREE phylogenies, genotype assignments and downloadable analysis records.
