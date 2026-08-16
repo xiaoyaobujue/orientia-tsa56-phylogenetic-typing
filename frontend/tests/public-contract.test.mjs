@@ -90,8 +90,8 @@ test("the phylogenetic tree uses wheel zoom, drag panning and an expanded viewer
 });
 
 test("the browser tab explicitly uses the analysis platform logo", () => {
-  assert.match(layoutSource, /rel="icon" href="\/favicon\.svg\?v=1\.0\.2"/);
-  assert.match(layoutSource, /rel="shortcut icon" href="\/favicon\.svg\?v=1\.0\.2"/);
+  assert.match(layoutSource, /rel="icon" href="\/favicon\.svg\?v=1\.1\.0"/);
+  assert.match(layoutSource, /rel="shortcut icon" href="\/favicon\.svg\?v=1\.1\.0"/);
   assert.match(layoutSource, /type="image\/svg\+xml"/);
 });
 
