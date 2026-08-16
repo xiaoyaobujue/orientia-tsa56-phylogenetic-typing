@@ -31,6 +31,26 @@ TREE_AUTO_ACCEPT_MIN_SUPPORT = 95.0
 TREE_DISTANCE_RULE_ID = "reference_tree_envelope_v3"
 TRIMMED_REFERENCE_NAME = "YC2_355_trimmed_reference.fasta"
 TRIM_METADATA_NAME = "YC2_355_trim_metadata.json"
+TREE_BACKBONE_COLOR = "#171717"
+TREE_REFERENCE_FALLBACK_COLOR = "#6B7280"
+TREE_GENOTYPE_COLORS = {
+    "1b": "#6BAED6",
+    "2a": "#3F88C5",
+    "2b": "#3A9D9C",
+    "3a": "#6DBA61",
+    "3b": "#238B45",
+    "4a": "#9C755F",
+    "4b": "#F05B61",
+    "4c": "#C83E52",
+    "4d": "#D8922F",
+    "4e": "#E67E22",
+    "4f": "#C85A17",
+    "5a": "#A98BC4",
+    "5b": "#7A5AA6",
+    "5c": "#9A8176",
+    "5d": "#C79A00",
+    "5e": "#B84D21",
+}
 
 
 @dataclass
@@ -167,6 +187,12 @@ class SingleReadOrientation:
     opposite_identity: float = 0.0
     decision_margin: float = 0.0
     method: str = "reference_seed_extend"
+
+
+@dataclass(frozen=True)
+class TrimmedTraceRead:
+    sequence: str
+    qualities: tuple[int, ...]
 
 
 @dataclass(frozen=True)
@@ -392,17 +418,29 @@ def assess_ab1_quality(path: Path, read_label: str, quality_threshold: int) -> T
     )
 
 
-def read_ab1_trimmed(path: Path, quality_threshold: int | None = None) -> str:
-    if quality_threshold is None:
-        record = SeqIO.read(str(path), "abi-trim")
-        return clean_sequence(str(record.seq).upper()).replace("-", "")
+def _normalize_trace_sequence(sequence: str) -> str:
+    """Normalize every called trace position without changing its coordinate count."""
+    return "".join(base if base in "ACGTN" else "N" for base in str(sequence).upper())
+
+
+def read_ab1_trimmed_with_qualities(
+    path: Path,
+    quality_threshold: int | None = None,
+) -> TrimmedTraceRead:
+    record = SeqIO.read(str(path), "abi-trim" if quality_threshold is None else "abi")
+    sequence = _normalize_trace_sequence(str(record.seq))
+    raw_qualities = record.letter_annotations.get("phred_quality", [])
+    if raw_qualities and len(raw_qualities) != len(sequence):
+        raise ValueError(
+            f"AB1 sequence/quality length mismatch: sequence={len(sequence)}, "
+            f"qualities={len(raw_qualities)}"
+        )
+    qualities = tuple(int(value) for value in raw_qualities) if raw_qualities else (0,) * len(sequence)
+
+    if quality_threshold is None or not raw_qualities:
+        return TrimmedTraceRead(sequence=sequence, qualities=qualities)
 
     threshold = max(0, min(40, int(quality_threshold)))
-    record = SeqIO.read(str(path), "abi")
-    qualities = record.letter_annotations.get("phred_quality", [])
-    if not qualities:
-        return clean_sequence(str(record.seq).upper()).replace("-", "")
-
     start = 0
     end = len(qualities)
     for index, quality in enumerate(qualities):
@@ -414,8 +452,14 @@ def read_ab1_trimmed(path: Path, quality_threshold: int | None = None) -> str:
             end = index + 1
             break
 
-    trimmed = record[start:end]
-    return clean_sequence(str(trimmed.seq).upper()).replace("-", "")
+    return TrimmedTraceRead(
+        sequence=sequence[start:end],
+        qualities=qualities[start:end],
+    )
+
+
+def read_ab1_trimmed(path: Path, quality_threshold: int | None = None) -> str:
+    return read_ab1_trimmed_with_qualities(path, quality_threshold=quality_threshold).sequence
 
 
 def load_fasta_records(path: Path) -> list[FastaRecord]:
@@ -449,59 +493,80 @@ def write_fasta(records: Iterable[FastaRecord], path: Path) -> None:
                 handle.write(sequence[start : start + 80] + "\n")
 
 
-def best_overlap_consensus(forward: str, reverse_read: str, min_overlap: int = 80) -> str:
+def best_overlap_consensus(
+    forward: str,
+    reverse_read: str,
+    min_overlap: int = 80,
+    *,
+    forward_qualities: Sequence[int] | None = None,
+    reverse_qualities: Sequence[int] | None = None,
+) -> str:
     return best_oriented_overlap_consensus(
         forward,
         reverse_complement(reverse_read),
         min_overlap=min_overlap,
+        read1_qualities=forward_qualities,
+        read2_qualities=tuple(reversed(reverse_qualities)) if reverse_qualities is not None else None,
     )
 
 
-def best_oriented_overlap_consensus(read1: str, read2: str, min_overlap: int = 80) -> str:
-    """Merge two reads that have already been oriented to the reference forward strand."""
+def best_oriented_overlap_consensus(
+    read1: str,
+    read2: str,
+    min_overlap: int = 80,
+    *,
+    read1_qualities: Sequence[int] | None = None,
+    read2_qualities: Sequence[int] | None = None,
+) -> str:
+    """Gap-aware merge of two reads already oriented to the reference forward strand."""
     forward = clean_sequence(read1).replace("-", "")
     reverse = clean_sequence(read2).replace("-", "")
-    best: tuple[int, float, int, int] | None = None
-    for offset in range(-len(reverse) + min_overlap, len(forward) - min_overlap + 1):
-        start = max(0, offset)
-        end = min(len(forward), offset + len(reverse))
-        if end <= start:
-            continue
-        matches = 0
-        mismatches = 0
-        for pos in range(start, end):
-            a = forward[pos]
-            b = reverse[pos - offset]
-            if a == "N" or b == "N":
-                continue
-            if a == b:
-                matches += 1
-            else:
-                mismatches += 1
-        score = matches - mismatches * 2
-        identity = matches / max(1, matches + mismatches)
-        candidate = (score, identity, end - start, offset)
-        if best is None or candidate > best:
-            best = candidate
-    if best is None:
-        return gapped_overlap_consensus(forward, reverse, min_overlap=min_overlap)
-
-    _, identity, overlap_len, offset = best
-    if overlap_len < min_overlap or identity < 0.85:
-        return gapped_overlap_consensus(forward, reverse, min_overlap=min_overlap)
-
-    min_pos = min(0, offset)
-    max_pos = max(len(forward), offset + len(reverse))
-    consensus: list[str] = []
-    for pos in range(min_pos, max_pos):
-        a = forward[pos] if 0 <= pos < len(forward) else ""
-        b_pos = pos - offset
-        b = reverse[b_pos] if 0 <= b_pos < len(reverse) else ""
-        consensus.append(choose_consensus_base(a, b))
-    return "".join(consensus).strip("N")
+    return gapped_overlap_consensus(
+        forward,
+        reverse,
+        min_overlap=min_overlap,
+        forward_qualities=read1_qualities,
+        reverse_qualities=read2_qualities,
+    )
 
 
-def gapped_overlap_consensus(forward: str, reverse: str, min_overlap: int = 80) -> str:
+def _validated_quality_values(
+    qualities: Sequence[int] | None,
+    sequence_length: int,
+    label: str,
+) -> tuple[int, ...] | None:
+    if qualities is None:
+        return None
+    values = tuple(int(value) for value in qualities)
+    if len(values) != sequence_length:
+        raise ValueError(
+            f"{label} sequence/quality length mismatch: sequence={sequence_length}, "
+            f"qualities={len(values)}"
+        )
+    return values
+
+
+def gapped_overlap_consensus(
+    forward: str,
+    reverse: str,
+    min_overlap: int = 80,
+    *,
+    forward_qualities: Sequence[int] | None = None,
+    reverse_qualities: Sequence[int] | None = None,
+) -> str:
+    forward = clean_sequence(forward).replace("-", "")
+    reverse = clean_sequence(reverse).replace("-", "")
+    forward_quality_values = _validated_quality_values(
+        forward_qualities,
+        len(forward),
+        "forward",
+    )
+    reverse_quality_values = _validated_quality_values(
+        reverse_qualities,
+        len(reverse),
+        "reverse",
+    )
+
     local_aligner = Align.PairwiseAligner()
     local_aligner.mode = "local"
     local_aligner.match_score = 2.0
@@ -537,13 +602,36 @@ def gapped_overlap_consensus(forward: str, reverse: str, min_overlap: int = 80) 
     aligned_forward = str(overlap_alignment[0])
     aligned_reverse = str(overlap_alignment[1])
     consensus: list[str] = []
+    forward_index = 0
+    reverse_index = 0
     for forward_base, reverse_base in zip(aligned_forward, aligned_reverse):
+        forward_quality = (
+            forward_quality_values[forward_index]
+            if forward_base != "-" and forward_quality_values is not None
+            else None
+        )
+        reverse_quality = (
+            reverse_quality_values[reverse_index]
+            if reverse_base != "-" and reverse_quality_values is not None
+            else None
+        )
         if forward_base == "-":
             consensus.append(reverse_base)
         elif reverse_base == "-":
             consensus.append(forward_base)
         else:
-            consensus.append(choose_consensus_base(forward_base, reverse_base))
+            consensus.append(
+                choose_consensus_base(
+                    forward_base,
+                    reverse_base,
+                    forward_quality,
+                    reverse_quality,
+                )
+            )
+        if forward_base != "-":
+            forward_index += 1
+        if reverse_base != "-":
+            reverse_index += 1
     return "".join(consensus).strip("N")
 
 
@@ -564,7 +652,12 @@ def aligned_string_identity(left: str, right: str) -> tuple[float, int]:
     return matches / max(1, matches + mismatches), overlap_len
 
 
-def choose_consensus_base(a: str, b: str) -> str:
+def choose_consensus_base(
+    a: str,
+    b: str,
+    a_quality: int | None = None,
+    b_quality: int | None = None,
+) -> str:
     if a and b:
         if a == b:
             return a
@@ -572,6 +665,8 @@ def choose_consensus_base(a: str, b: str) -> str:
             return b
         if b == "N":
             return a
+        if a_quality is not None and b_quality is not None and b_quality > a_quality:
+            return b
         return a
     return a or b or "N"
 
@@ -1670,79 +1765,375 @@ def infer_tree_typing_results(
     return results
 
 
-def render_tree_svg(tree, sample_id: str | Iterable[str], output_path: Path, title: str) -> None:
+def normalize_tree_display_genotype(value: str) -> str | None:
+    compact = "".join(char for char in value.strip().lower() if char.isalnum())
+    if compact in TREE_GENOTYPE_COLORS:
+        return compact
+    return None
+
+
+def tree_reference_display_genotype(
+    reference_id: str,
+    genotype_map: GenotypeMap | None = None,
+) -> str | None:
+    if genotype_map is not None:
+        metadata = lookup_reference_metadata(reference_id, genotype_map)
+        mapped = normalize_tree_display_genotype(metadata.genotype_new)
+        if mapped is not None:
+            return mapped
+
+    tokens = reference_id.strip().split("_")
+    for token in tokens[1:]:
+        parsed = normalize_tree_display_genotype(token)
+        if parsed is not None:
+            return parsed
+    for index in range(1, len(tokens) - 1):
+        number = tokens[index].strip()
+        letter = tokens[index + 1].strip().lower()
+        if number.isdigit() and len(letter) == 1 and letter.isalpha():
+            parsed = normalize_tree_display_genotype(number + letter)
+            if parsed is not None:
+                return parsed
+    return None
+
+
+def tree_scale_length(max_depth: float) -> float:
+    if not math.isfinite(max_depth) or max_depth <= 0:
+        return 0.1
+    target = max_depth / 3.0
+    exponent = math.floor(math.log10(target))
+    unit = 10**exponent
+    candidates = [unit, 2 * unit, 5 * unit, 10 * unit]
+    return max(candidate for candidate in candidates if candidate <= target)
+
+
+def render_tree_svg(
+    tree,
+    sample_id: str | Iterable[str],
+    output_path: Path,
+    title: str,
+    genotype_map: GenotypeMap | None = None,
+) -> None:
     sample_ids = {sample_id} if isinstance(sample_id, str) else set(sample_id)
-    terminals = tree.get_terminals()
+    # The exported Newick keeps the deterministic increasing order used by the
+    # analysis pipeline. Mirror only the rendered y-axis so the first clade is
+    # displayed at the bottom, matching the requested publication orientation.
+    terminals = list(reversed(tree.get_terminals()))
     row_height = 22
     left_margin = 28
     top_margin = 70
-    label_margin = 12
-    width = 1650
-    height = max(320, top_margin * 2 + row_height * max(1, len(terminals)))
-    max_depth = max(tree.depths().values()) or 1.0
-    plot_width = 980
-
-    y_positions = {terminal: top_margin + i * row_height for i, terminal in enumerate(terminals)}
+    plot_width = 490
+    label_column_x = left_margin + plot_width + 48
+    label_text_x = label_column_x + 20
+    guide_end_x = label_column_x - 12
+    longest_label = max((len(terminal.name or "") for terminal in terminals), default=0)
+    width = max(1050, int(label_text_x + longest_label * 7.2 + 56))
+    height = max(320, top_margin * 2 + row_height * max(1, len(terminals)) + 30)
     depths = tree.depths()
+    max_depth = max(depths.values()) or 1.0
+
+    y_positions = {
+        terminal: top_margin + index * row_height
+        for index, terminal in enumerate(terminals)
+    }
+    y_cache: dict[object, float] = {}
 
     def clade_y(clade) -> float:
+        cached = y_cache.get(clade)
+        if cached is not None:
+            return cached
         if clade in y_positions:
-            return y_positions[clade]
-        ys = [clade_y(child) for child in clade.clades]
-        return sum(ys) / len(ys)
+            value = y_positions[clade]
+        else:
+            child_values = [clade_y(child) for child in clade.clades]
+            value = sum(child_values) / len(child_values)
+        y_cache[clade] = value
+        return value
 
     def clade_x(clade) -> float:
         return left_margin + depths[clade] / max_depth * plot_width
 
+    clades = list(tree.find_clades(order="preorder"))
+    parent_by_clade = {
+        child: parent
+        for parent in clades
+        for child in parent.clades
+    }
+    terminal_genotypes = {
+        terminal: (
+            None
+            if terminal.name in sample_ids
+            else tree_reference_display_genotype(terminal.name or "", genotype_map)
+        )
+        for terminal in terminals
+    }
+    terminals_by_clade = {clade: clade.get_terminals() for clade in clades}
+    reference_genotypes_by_clade: dict[object, set[str]] = {}
+    pure_reference_genotype_by_clade: dict[object, str | None] = {}
+    reference_count_by_clade: dict[object, int] = {}
+
+    for clade in clades:
+        descendants = terminals_by_clade[clade]
+        references = [
+            terminal
+            for terminal in descendants
+            if terminal.name not in sample_ids
+        ]
+        recognized = {
+            genotype
+            for terminal in references
+            if (genotype := terminal_genotypes[terminal]) is not None
+        }
+        reference_count_by_clade[clade] = len(references)
+        reference_genotypes_by_clade[clade] = recognized
+        pure_reference_genotype_by_clade[clade] = (
+            next(iter(recognized))
+            if references
+            and len(references) == len(descendants)
+            and len(recognized) == 1
+            and all(terminal_genotypes[terminal] is not None for terminal in references)
+            else None
+        )
+
+    support_rows: list[tuple[object, float, int, int, int, bool]] = []
+    for clade in clades:
+        if not clade.clades:
+            continue
+        label = clade_support_label(clade)
+        if not label:
+            continue
+        support = float(label)
+        reference_genotypes = reference_genotypes_by_clade[clade]
+        parent = parent_by_clade.get(clade)
+        parent_genotypes = (
+            reference_genotypes_by_clade[parent]
+            if parent is not None
+            else set()
+        )
+        anchor_boundary = (
+            len(reference_genotypes) == 1
+            and reference_count_by_clade[clade] >= 2
+            and len(parent_genotypes) > 1
+        )
+        support_rows.append(
+            (
+                clade,
+                support,
+                len(terminals_by_clade[clade]),
+                reference_count_by_clade[clade],
+                len(reference_genotypes),
+                anchor_boundary,
+            )
+        )
+
+    anchor_support = [
+        row for row in support_rows if row[5] and row[1] >= 50
+    ]
+    major_support = [
+        row
+        for row in support_rows
+        if not row[5]
+        and row[1] >= 75
+        and row[4] > 1
+        and row[3] >= 6
+        and row[2] >= 12
+    ]
+    major_support.sort(key=lambda row: (-row[2], -row[1]))
+    support_clades = {row[0] for row in [*anchor_support, *major_support[:12]]}
+    if not support_clades:
+        fallback_support = [row for row in support_rows if row[1] >= 70]
+        fallback_support.sort(key=lambda row: (-row[2], -row[1]))
+        support_clades = {row[0] for row in fallback_support[:12]}
+
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        (
+            f'<svg xmlns="http://www.w3.org/2000/svg" class="tree-style-v2" '
+            f'role="img" aria-labelledby="tree-svg-title tree-svg-desc" '
+            f'data-label-column-x="{label_column_x:.2f}" '
+            f'data-vertical-order="bottom-to-top" width="{width}" '
+            f'height="{height}" viewBox="0 0 {width} {height}">'
+        ),
+        f'<title id="tree-svg-title">{escape_xml(title)}</title>',
+        (
+            '<desc id="tree-svg-desc">Midpoint-rooted phylogenetic tree with '
+            f'{len(sample_ids)} query samples shown as aligned black triangles and '
+            f'{len(terminals) - len(sample_ids)} genotype reference sequences shown in colour.</desc>'
+        ),
         '<rect width="100%" height="100%" fill="white"/>',
-        f'<text x="{left_margin}" y="26" font-family="Arial, sans-serif" font-size="18" font-weight="700">{escape_xml(title)}</text>',
-        f'<text x="{left_margin}" y="48" font-family="Arial, sans-serif" font-size="13" fill="#555">rooting: midpoint; order: increasing; branch labels: bootstrap %</text>',
-        '<g stroke="#2b2b2b" stroke-width="1.25" fill="none">',
+        (
+            f'<text class="tree-title" x="{left_margin}" y="26" '
+            'font-family="Arial, sans-serif" font-size="18" font-weight="700" '
+            f'fill="#111111">{escape_xml(title)}</text>'
+        ),
+        (
+            f'<text class="tree-subtitle" x="{left_margin}" y="48" '
+            'font-family="Arial, sans-serif" font-size="13" fill="#555555">'
+            'rooting: midpoint; order: increasing; display: bottom-to-top; '
+            '&#9650; samples; coloured labels: '
+            'genotype references; key branch labels: bootstrap %</text>'
+        ),
+        '<g class="tree-branches" fill="none" stroke-linecap="square">',
     ]
 
-    for clade in tree.find_clades(order="preorder"):
+    for clade in clades:
         x = clade_x(clade)
-        if clade.clades:
-            child_ys = [clade_y(child) for child in clade.clades]
-            parts.append(f'<line x1="{x:.2f}" y1="{min(child_ys):.2f}" x2="{x:.2f}" y2="{max(child_ys):.2f}"/>')
-            for child in clade.clades:
-                cx = clade_x(child)
-                cy = clade_y(child)
-                color = "#d62728" if contains_terminal(child, sample_ids) else "#2b2b2b"
-                width_attr = "2.6" if contains_terminal(child, sample_ids) else "1.25"
-                parts.append(
-                    f'<line x1="{x:.2f}" y1="{cy:.2f}" x2="{cx:.2f}" y2="{cy:.2f}" stroke="{color}" stroke-width="{width_attr}"/>'
-                )
+        if not clade.clades:
+            continue
+        clade_genotype = pure_reference_genotype_by_clade[clade]
+        vertical_color = (
+            TREE_GENOTYPE_COLORS[clade_genotype]
+            if clade_genotype is not None
+            else TREE_BACKBONE_COLOR
+        )
+        vertical_class = "genotype-branch" if clade_genotype is not None else "tree-backbone"
+        vertical_data = (
+            f' data-genotype="{escape_xml(clade_genotype)}"'
+            if clade_genotype is not None
+            else ""
+        )
+        child_ys = [clade_y(child) for child in clade.clades]
+        parts.append(
+            f'<line class="{vertical_class}"{vertical_data} '
+            f'x1="{x:.2f}" y1="{min(child_ys):.2f}" '
+            f'x2="{x:.2f}" y2="{max(child_ys):.2f}" '
+            f'stroke="{vertical_color}" stroke-width="'
+            f'{"2.0" if clade_genotype is not None else "1.45"}"/>'
+        )
+        for child in clade.clades:
+            child_genotype = pure_reference_genotype_by_clade[child]
+            color = (
+                TREE_GENOTYPE_COLORS[child_genotype]
+                if child_genotype is not None
+                else TREE_BACKBONE_COLOR
+            )
+            line_class = "genotype-branch" if child_genotype is not None else "tree-backbone"
+            line_data = (
+                f' data-genotype="{escape_xml(child_genotype)}"'
+                if child_genotype is not None
+                else ""
+            )
+            parts.append(
+                f'<line class="{line_class}"{line_data} '
+                f'x1="{x:.2f}" y1="{clade_y(child):.2f}" '
+                f'x2="{clade_x(child):.2f}" y2="{clade_y(child):.2f}" '
+                f'stroke="{color}" stroke-width="'
+                f'{"2.0" if child_genotype is not None else "1.45"}"/>'
+            )
     parts.append("</g>")
 
-    for clade in tree.find_clades(order="preorder"):
-        if clade.clades:
-            label = clade_support_label(clade)
-            if label:
-                parts.append(
-                    f'<text class="bootstrap-label" x="{clade_x(clade) + 4:.2f}" y="{clade_y(clade) - 5:.2f}" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#4b5563" stroke="white" stroke-width="3" paint-order="stroke">{label}</text>'
-                )
+    for clade in clades:
+        if clade not in support_clades:
+            continue
+        label = clade_support_label(clade)
+        parts.append(
+            f'<text class="bootstrap-label" x="{max(12, clade_x(clade) - 5):.2f}" '
+            f'y="{clade_y(clade) - 5:.2f}" text-anchor="end" '
+            'font-family="Arial, sans-serif" font-size="14" font-style="italic" '
+            'fill="#111111" stroke="white" stroke-width="3" '
+            f'paint-order="stroke">{label}</text>'
+        )
 
     for terminal in terminals:
+        name = terminal.name or ""
+        escaped_name = escape_xml(name)
         branch_end_x = clade_x(terminal)
-        x = branch_end_x + label_margin
-        y = clade_y(terminal) + 4
-        is_sample = terminal.name in sample_ids
-        color = "#d62728" if is_sample else "#111"
-        weight = "700" if is_sample else "400"
+        marker_y = clade_y(terminal)
+        text_y = marker_y + 4
+        is_sample = name in sample_ids
+        genotype = terminal_genotypes[terminal]
         if is_sample:
-            marker_x = branch_end_x + 8
-            marker_y = clade_y(terminal)
-            x = branch_end_x + 18
-            parts.append(
-                f'<circle class="sample-marker" aria-label="query sample" cx="{marker_x:.2f}" cy="{marker_y:.2f}" r="4.8" fill="#d62728" stroke="white" stroke-width="1.8"/>'
+            guide_color = "#8A8A8A"
+            marker_points = " ".join(
+                [
+                    f"{label_column_x:.2f},{marker_y - 5.6:.2f}",
+                    f"{label_column_x - 5.4:.2f},{marker_y + 4.6:.2f}",
+                    f"{label_column_x + 5.4:.2f},{marker_y + 4.6:.2f}",
+                ]
             )
-        parts.append(
-            f'<text x="{x:.2f}" y="{y:.2f}" font-family="Arial, sans-serif" font-size="12" font-weight="{weight}" fill="{color}">{escape_xml(terminal.name or "")}</text>'
-        )
-    parts.append("</svg>\n")
+            parts.extend(
+                [
+                    (
+                        f'<g class="tip sample-tip" data-tip-type="sample" '
+                        f'data-label="{escaped_name}"><title>{escaped_name} — sample; '
+                        'typing status is reported in the result table</title>'
+                    ),
+                    (
+                        f'<line class="tip-guide sample-tip-guide" x1="{branch_end_x + 4:.2f}" '
+                        f'y1="{marker_y:.2f}" x2="{guide_end_x:.2f}" y2="{marker_y:.2f}" '
+                        f'stroke="{guide_color}" stroke-width="0.7" stroke-dasharray="2 5" '
+                        'stroke-opacity="0.65"/>'
+                    ),
+                    (
+                        f'<polygon class="sample-marker" aria-label="query sample" '
+                        f'data-cy="{marker_y:.2f}" points="{marker_points}" '
+                        f'fill="{TREE_BACKBONE_COLOR}"/>'
+                    ),
+                    (
+                        f'<text class="tip-label sample-label" x="{label_text_x:.2f}" '
+                        f'y="{text_y:.2f}" font-family="Arial, sans-serif" font-size="12" '
+                        f'font-weight="500" fill="{TREE_BACKBONE_COLOR}">{escaped_name}</text>'
+                    ),
+                    "</g>",
+                ]
+            )
+        else:
+            label_color = (
+                TREE_GENOTYPE_COLORS[genotype]
+                if genotype is not None
+                else TREE_REFERENCE_FALLBACK_COLOR
+            )
+            genotype_data = (
+                f' data-genotype="{escape_xml(genotype)}"'
+                if genotype is not None
+                else ""
+            )
+            genotype_title = genotype if genotype is not None else "unmapped"
+            parts.extend(
+                [
+                    (
+                        f'<g class="tip reference-tip" data-tip-type="reference"{genotype_data} '
+                        f'data-label="{escaped_name}"><title>{escaped_name} — reference genotype '
+                        f'{escape_xml(genotype_title)}</title>'
+                    ),
+                    (
+                        f'<line class="tip-guide reference-tip-guide"{genotype_data} '
+                        f'x1="{branch_end_x + 4:.2f}" y1="{marker_y:.2f}" '
+                        f'x2="{guide_end_x:.2f}" y2="{marker_y:.2f}" '
+                        f'stroke="{label_color}" stroke-width="0.7" stroke-dasharray="2 5" '
+                        'stroke-opacity="0.55"/>'
+                    ),
+                    (
+                        f'<text class="tip-label reference-label"{genotype_data} '
+                        f'x="{label_text_x:.2f}" y="{text_y:.2f}" '
+                        'font-family="Arial, sans-serif" font-size="12" font-weight="500" '
+                        f'fill="{label_color}">{escaped_name}</text>'
+                    ),
+                    "</g>",
+                ]
+            )
+
+    scale_value = tree_scale_length(max_depth)
+    scale_width = scale_value / max_depth * plot_width
+    scale_x = left_margin
+    scale_y = height - 36
+    scale_label = f"{scale_value:.3g}"
+    parts.extend(
+        [
+            '<g class="tree-scale" aria-label="branch length scale">',
+            (
+                f'<line x1="{scale_x:.2f}" y1="{scale_y:.2f}" '
+                f'x2="{scale_x + scale_width:.2f}" y2="{scale_y:.2f}" '
+                f'stroke="{TREE_BACKBONE_COLOR}" stroke-width="2"/>'
+            ),
+            (
+                f'<text x="{scale_x + scale_width / 2:.2f}" y="{scale_y - 8:.2f}" '
+                'text-anchor="middle" font-family="Arial, sans-serif" font-size="12" '
+                f'fill="{TREE_BACKBONE_COLOR}">{scale_label}</text>'
+            ),
+            "</g>",
+            "</svg>\n",
+        ]
+    )
     output_path.write_text("\n".join(parts), encoding="utf-8")
 
 
@@ -1933,17 +2324,17 @@ def run_pipeline(
         quality_note = "两个测序文件质控通过"
 
     genotype_map = load_genotype_map(genotype_xlsx)
-    passing_sequences = []
+    passing_sequences: list[tuple[str, TrimmedTraceRead]] = []
     for path, metrics in passing:
         check_cancelled()
         passing_sequences.append(
             (
                 metrics.read_label,
-                read_ab1_trimmed(path, quality_threshold=quality_threshold),
+                read_ab1_trimmed_with_qualities(path, quality_threshold=quality_threshold),
             )
         )
     check_cancelled()
-    placement_query = passing_sequences[0][1]
+    placement_query = passing_sequences[0][1].sequence
     trimmed_path = cache_dir / TRIMMED_REFERENCE_NAME
     if force_rebuild_reference or not trimmed_path.exists():
         full_records = load_fasta_records(Path(full_reference_fasta).resolve())
@@ -1955,33 +2346,49 @@ def run_pipeline(
         force_rebuild=force_rebuild_reference,
     )
     check_cancelled()
-    oriented_reads = []
-    for label, sequence in passing_sequences:
+    oriented_reads: list[tuple[str, SingleReadOrientation, tuple[int, ...]]] = []
+    for label, trace_read in passing_sequences:
         check_cancelled()
+        orientation = auto_orient_single_read(trace_read.sequence, reference_database.records)
+        oriented_qualities = (
+            tuple(reversed(trace_read.qualities))
+            if orientation.orientation == "reverse_complement"
+            else trace_read.qualities
+        )
         oriented_reads.append(
-            (label, auto_orient_single_read(sequence, reference_database.records))
+            (label, orientation, oriented_qualities)
         )
     check_cancelled()
 
     if len(oriented_reads) == 1:
-        label, oriented = oriented_reads[0]
+        label, oriented, _qualities = oriented_reads[0]
         consensus = oriented.sequence
         read_orientation = f"{label}:{oriented.orientation}"
         orientation_identity: float | None = oriented.best_identity
         direction_note = "反向互补为正向序列" if oriented.orientation == "reverse_complement" else "已是参考正向"
         quality_note = f"{quality_note}；参考库双链比对：{direction_note}"
     else:
-        (first_read_label, first_oriented), (second_read_label, second_oriented) = oriented_reads[:2]
+        (
+            first_read_label,
+            first_oriented,
+            first_qualities,
+        ), (
+            second_read_label,
+            second_oriented,
+            second_qualities,
+        ) = oriented_reads[:2]
         try:
             consensus = best_oriented_overlap_consensus(
                 first_oriented.sequence,
                 second_oriented.sequence,
                 min_overlap=min_overlap,
+                read1_qualities=first_qualities,
+                read2_qualities=second_qualities,
             )
         except ValueError as overlap_error:
             if not allow_single_read:
                 raise
-            selected_label, selected = max(
+            selected_label, selected, _selected_qualities = max(
                 oriented_reads,
                 key=lambda item: (item[1].best_identity, item[1].aligned_length),
             )
@@ -2008,7 +2415,7 @@ def run_pipeline(
                 first_oriented.best_identity,
                 second_oriented.best_identity,
             )
-            quality_note = "两个测序文件质控通过；参考库双链比对定向后完成拼接"
+            quality_note = "两个测序文件质控通过；参考库双链比对定向后完成缺口感知、质量值加权拼接"
     classification = classify_sequence(consensus, reference_database.records, genotype_map)
     check_cancelled()
 
@@ -2030,7 +2437,13 @@ def run_pipeline(
         tree = build_distance_tree(aligned_records)
         midpoint_root_and_sort(tree)
         Phylo.write(tree, str(tree_newick), "newick")
-        render_tree_svg(tree, sample_id, tree_svg, f"{sample_id} YC2 355-reference NJ tree")
+        render_tree_svg(
+            tree,
+            sample_id,
+            tree_svg,
+            f"{sample_id} YC2 355-reference NJ tree",
+            genotype_map=genotype_map,
+        )
 
     result = PipelineResult(
         sample_id=sample_id,

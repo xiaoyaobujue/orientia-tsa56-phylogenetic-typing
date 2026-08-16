@@ -1,13 +1,15 @@
 export const ARTICLE_MODE = "v1_strict_article" as const;
 export const PROJECT_ID = "orientia-tsa56-phylogenetic-typing" as const;
-export const PROJECT_VERSION = "1.0.0" as const;
+export const PROJECT_VERSION = "1.0.2" as const;
 
 export type JobStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export type TreeTypingResult = {
   sample_id: string;
   predicted_new_genotype?: string;
+  predicted_old_genotype?: string;
   predicted_new_group?: string;
+  predicted_old_group?: string;
   confidence?: string;
   status?: string;
   support?: number | null;
@@ -19,7 +21,9 @@ export type TreeTypingResult = {
 
 export type AnalysisSummary = {
   predicted_type?: string;
+  predicted_old_type?: string;
   predicted_group?: string;
+  predicted_old_group?: string;
   confidence?: string;
   target_status?: string;
   typing_source?: string;
@@ -55,7 +59,12 @@ const configuredBaseUrl = (
   import.meta as ImportMeta & { env?: Record<string, string | undefined> }
 ).env?.VITE_PHYLO_PUBLIC_API_BASE_URL;
 
-export const API_BASE_URL = (configuredBaseUrl || "http://127.0.0.1:8200").replace(/\/+$/, "");
+const isRemoteBrowser = typeof window !== "undefined"
+  && !["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+
+export const API_BASE_URL = (
+  isRemoteBrowser ? "" : (configuredBaseUrl || "http://127.0.0.1:8200")
+).replace(/\/+$/, "");
 
 export class AnalysisApiError extends Error {
   readonly status: number;
@@ -79,7 +88,7 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export async function getServiceHealth() {
-  const response = await fetch(`${API_BASE_URL}/health`, { cache: "no-store" });
+  const response = await fetch(`${API_BASE_URL}/api/health`, { cache: "no-store" });
   const body = await readJson<{
     project_id?: string;
     project_version?: string;

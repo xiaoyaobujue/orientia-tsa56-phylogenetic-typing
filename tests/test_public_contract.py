@@ -15,6 +15,7 @@ def test_openapi_has_no_v2_or_placement_routes():
 
     assert paths == {
         "/",
+        "/api/health",
         "/health",
         "/ready",
         "/api/config",

@@ -203,6 +203,15 @@ def test_health_endpoint_reports_ready():
     assert "blast_method" not in body
 
 
+def test_same_origin_health_endpoint_reports_ready():
+    client = TestClient(app)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["project_id"] == "orientia-tsa56-phylogenetic-typing"
+
+
 def test_api_root_redirects_to_the_maintained_article_workbench():
     client = TestClient(app, follow_redirects=False)
 
@@ -212,7 +221,7 @@ def test_api_root_redirects_to_the_maintained_article_workbench():
     assert response.headers["location"] == "http://localhost:3200/"
 
 
-def test_corrected_60ref_is_pre_aligned_and_has_corrected_jg_a_labels():
+def test_corrected_60ref_is_pre_aligned_and_has_canonical_genotype_labels():
     references = webapp_module.load_fasta_records(DATA / "60ref_151-850.fas")
     names = {reference.name for reference in references}
     genotype_map = webapp_module.load_genotype_map(DATA / "355ref-genotype-map.xlsx")
@@ -220,14 +229,32 @@ def test_corrected_60ref_is_pre_aligned_and_has_corrected_jg_a_labels():
     assert len(references) == 60
     assert len(names) == 60
     assert {len(reference.sequence) for reference in references} == {898}
-    assert {
-        "JX235719_4_c_JG_A",
-        "GQ495611_4_c_JG_A",
-        "JX188389_4_c_JG_A",
-    }.issubset(names)
-    assert not any("_4_d_JG_A" in name for name in names)
-    for accession in ("JX235719", "GQ495611", "U19903", "JX188389"):
-        assert genotype_map.by_accession[accession].matched_label == f"{accession}_4_c_JG_A"
+    for reference in references:
+        accession = reference.name.split("_", 1)[0].upper()
+        metadata = genotype_map.by_accession[accession]
+        new_genotype = metadata.genotype_new.lower()
+        old_genotype = metadata.genotype_old.replace(" ", "")
+        assert reference.name == (
+            f"{accession}_{new_genotype[0]}_{new_genotype[1]}_{old_genotype}"
+        )
+
+    assert sum("_4_f_JG_C" in name for name in names) == 9
+    assert sum("_4_e_Kawasaki" in name for name in names) == 3
+    assert sum("_4_d_JG_B" in name for name in names) == 3
+    assert sum("_2_b_Kato_B" in name for name in names) == 6
+    assert sum("_2_a_Kato_A" in name for name in names) == 3
+
+
+def test_genotype_workbook_matches_the_approved_relationships():
+    genotype_map = webapp_module.load_genotype_map(DATA / "355ref-genotype-map.xlsx")
+    observed: dict[str, set[str]] = {}
+    for metadata in genotype_map.records:
+        observed.setdefault(metadata.genotype_new, set()).add(metadata.genotype_old)
+
+    assert observed == {
+        new_genotype: {old_genotype}
+        for new_genotype, old_genotype in webapp_module.EXPECTED_GENOTYPE_RELATIONSHIPS.items()
+    }
 
 
 def test_local_react_site_origin_is_allowed_by_cors():
@@ -257,7 +284,7 @@ def test_config_advertises_only_article_v1():
     assert mode_ids == {webapp_module.V1_STRICT_MODE}
     assert "v2" not in body
     assert body["available_modes"][0]["id"] == webapp_module.V1_STRICT_MODE
-    assert body["available_modes"][0]["version"] == "1.0.0"
+    assert body["available_modes"][0]["version"] == "1.0.1"
     assert body["available_modes"][0]["legacy_alias"] == "iqtree"
     assert body["available_modes"][0]["available"] is body["iqtree_available"]
     assert body["iqtree_model"] == "TVM+F+R5"
@@ -280,7 +307,7 @@ def test_config_advertises_only_article_v1():
     assert "blast_method" not in body
     article = body["article_profile"]
     assert article["profile_id"] == webapp_module.V1_STRICT_PROFILE_ID
-    assert article["version"] == "1.0.0"
+    assert article["version"] == "1.0.1"
     assert article["mode"] == webapp_module.V1_STRICT_MODE
     assert article["strict"] is True
     assert article["reference_name"] == "60ref_151-850.fas"
@@ -342,7 +369,8 @@ def test_tree_svg_separates_title_subtitle_and_first_tip(tmp_path):
     assert 'y="26"' in svg
     assert 'y="48"' in svg
     assert 'rooting: midpoint; order: increasing' in svg
-    assert 'cy="70.00"' in svg
+    assert 'data-vertical-order="bottom-to-top"' in svg
+    assert 'data-cy="92.00"' in svg
 
 
 def test_mafft_command_adds_all_samples_to_fixed_reference_without_changing_length(
@@ -549,6 +577,63 @@ def test_new_analysis_rejects_legacy_submission_modes(legacy_mode):
 
     assert response.status_code == 400
     assert "mode=v1_strict_article" in response.json()["detail"]
+
+
+def test_analysis_accepts_118_sample_batch_metadata(monkeypatch):
+    scheduled = []
+
+    def capture_task(self, function, *args, **kwargs):
+        scheduled.append((function, args, kwargs))
+
+    monkeypatch.setattr(webapp_module, "MAFFT_RUNNER", ("native", "mafft"))
+    monkeypatch.setattr(webapp_module, "IQTREE_RUNNER", ("native", "iqtree"))
+    monkeypatch.setattr(webapp_module.BackgroundTasks, "add_task", capture_task)
+    submission_id = "20260810-120000_118样本_a1b2c3"
+    response = TestClient(app).post(
+        "/api/analyze",
+        data={
+            "sample_id": "060-0703",
+            "mode": "prepare",
+            "tree_reference": "60",
+            "submission_id": submission_id,
+            "submission_sample_count": 118,
+        },
+        files={
+            "read1_file": (
+                "simulated.ab1",
+                b"reference-derived-simulated",
+                "application/octet-stream",
+            ),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["submission_sample_count"] == 118
+    assert body["submission_id"] == submission_id
+    assert len(scheduled) == 1
+    shutil.rmtree(webapp_module.WEB_RESULTS / submission_id, ignore_errors=True)
+
+
+def test_analysis_rejects_batch_metadata_above_supported_limit():
+    response = TestClient(app).post(
+        "/api/analyze",
+        data={
+            "sample_id": "too-many",
+            "mode": "prepare",
+            "submission_sample_count": webapp_module.MAX_BATCH_SAMPLE_COUNT + 1,
+        },
+        files={
+            "read1_file": (
+                "simulated.ab1",
+                b"reference-derived-simulated",
+                "application/octet-stream",
+            ),
+        },
+    )
+
+    assert response.status_code == 400
+    assert str(webapp_module.MAX_BATCH_SAMPLE_COUNT) in response.json()["detail"]
 
 
 @pytest.mark.parametrize("mode", [webapp_module.V1_STRICT_MODE, "iqtree", "prepare"])
@@ -1230,11 +1315,11 @@ def test_batch_tree_combines_all_source_consensus_and_adds_bootstrap(monkeypatch
     assert completed["summary"]["tree_reference_count"] == 60
     assert completed["summary"]["bootstrap_replicates"] == 1000
     assert completed["analysis_mode"] == webapp_module.V1_STRICT_MODE
-    assert completed["workflow_version"] == "1.0.0"
+    assert completed["workflow_version"] == "1.0.1"
     assert completed["strict_article_mode"] is True
     assert completed["summary"]["analysis_mode"] == webapp_module.V1_STRICT_MODE
     assert completed["summary"]["workflow_profile_id"] == webapp_module.V1_STRICT_PROFILE_ID
-    assert completed["summary"]["workflow_version"] == "1.0.0"
+    assert completed["summary"]["workflow_version"] == "1.0.1"
     assert completed["summary"]["strict_article_mode"] is True
     assert completed["summary"]["typing_source"] == "phylogenetic_tree"
     assert completed["summary"]["similarity_predicted_type"] is None
@@ -1323,14 +1408,14 @@ def test_fasta_analysis_skips_ab1_and_runs_joint_phylogeny(monkeypatch):
     assert completed["mode"] == "fasta_iqtree"
     assert completed["analysis_mode"] == webapp_module.V1_STRICT_MODE
     assert completed["workflow_profile_id"] == webapp_module.V1_STRICT_PROFILE_ID
-    assert completed["workflow_version"] == "1.0.0"
+    assert completed["workflow_version"] == "1.0.1"
     assert completed["strict_article_mode"] is True
     assert completed["submission_sample_count"] == 2
     assert completed["input_read_mode"] == "fasta"
     assert completed["summary"]["input_source"] == "fasta"
     assert completed["summary"]["analysis_mode"] == webapp_module.V1_STRICT_MODE
     assert completed["summary"]["workflow_profile_id"] == webapp_module.V1_STRICT_PROFILE_ID
-    assert completed["summary"]["workflow_version"] == "1.0.0"
+    assert completed["summary"]["workflow_version"] == "1.0.1"
     assert completed["summary"]["strict_article_mode"] is True
     assert completed["summary"]["iqtree_command"].endswith(
         "-m TVM+F+R5 -bb 1000 -T AUTO -bnni"

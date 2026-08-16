@@ -89,7 +89,7 @@ MAX_CONCURRENT_JOBS = max(
 )
 FASTA_EXTENSIONS = {".fa", ".fas", ".fasta", ".fna"}
 V1_STRICT_MODE = "v1_strict_article"
-V1_STRICT_VERSION = "1.0.0"
+V1_STRICT_VERSION = "1.0.1"
 V1_STRICT_PROFILE_ID = "article_phylogenetic_v1_strict"
 LEGACY_IQTREE_MODE = "iqtree"
 ALLOWED_MODES = {V1_STRICT_MODE, LEGACY_IQTREE_MODE, "prepare"}
@@ -99,6 +99,25 @@ BOOTSTRAP_REPLICATES = max(
 )
 IQTREE_MODEL = "TVM+F+R5"
 IQTREE_BOOTSTRAP_REPLICATES = 1000
+EXPECTED_GENOTYPE_RELATIONSHIPS = {
+    "5e": "Karp_A",
+    "5c": "Karp_B",
+    "5d": "Karp_C",
+    "5b": "Saitama",
+    "5a": "Boryong",
+    "4f": "JG_C",
+    "4e": "Kawasaki",
+    "4d": "JG_B",
+    "4c": "JG_A",
+    "4b": "Gilliam",
+    "4a": "TD",
+    "3b": "TA763 _B",
+    "3a": "TA763 _A",
+    "2b": "Kato_B",
+    "2a": "Kato_A",
+    "1b": "Shimokoshi",
+    "1a": "TA686",
+}
 
 
 def resolve_iqtree_threads() -> str:
@@ -129,6 +148,7 @@ IQTREE_THREADS = resolve_iqtree_threads()
 DETECTED_CPU_COUNT = max(1, os.cpu_count() or 1)
 DEFAULT_QUALITY_THRESHOLD = 35
 DEFAULT_MIN_OVERLAP = 80
+MAX_BATCH_SAMPLE_COUNT = 200
 IQTREE_WSL_BINARY = os.environ.get(
     "PHYLO_PUBLIC_IQTREE_WSL_BINARY",
     "",
@@ -345,6 +365,26 @@ def validate_article_reference_profile() -> dict[str, Any]:
                 "genotype map contains duplicate accessions: "
                 + ", ".join(genotype_map.duplicate_accessions[:5])
             )
+        observed_relationships: dict[str, set[str]] = {}
+        for metadata in genotype_map.records:
+            observed_relationships.setdefault(metadata.genotype_new, set()).add(
+                metadata.genotype_old
+            )
+        for new_genotype, expected_old_genotype in EXPECTED_GENOTYPE_RELATIONSHIPS.items():
+            observed_old_genotypes = observed_relationships.get(new_genotype, set())
+            if observed_old_genotypes != {expected_old_genotype}:
+                errors.append(
+                    f"genotype mapping {new_genotype} must be {expected_old_genotype}; "
+                    f"found {sorted(observed_old_genotypes)}"
+                )
+        unexpected_genotypes = sorted(
+            set(observed_relationships) - set(EXPECTED_GENOTYPE_RELATIONSHIPS)
+        )
+        if unexpected_genotypes:
+            errors.append(
+                "genotype map contains unexpected new genotypes: "
+                + ", ".join(unexpected_genotypes)
+            )
         metadata_by_accession: dict[str, list[Any]] = {}
         for metadata in genotype_map.records:
             accession = metadata.reference_id.split("_", 1)[0].upper()
@@ -380,6 +420,23 @@ def validate_article_reference_profile() -> dict[str, Any]:
             ):
                 errors.append(f"reference {reference.name} has incomplete genotype metadata")
                 continue
+            new_genotype = metadata.genotype_new.strip().lower()
+            if not re.fullmatch(r"\d[a-z]", new_genotype):
+                errors.append(
+                    f"reference {reference.name} has invalid new genotype "
+                    f"{metadata.genotype_new}"
+                )
+                continue
+            canonical_old_genotype = re.sub(r"\s+", "", metadata.genotype_old)
+            accession = reference.name.split("_", 1)[0].upper()
+            expected_leaf_id = (
+                f"{accession}_{new_genotype[0]}_{new_genotype[1]}_"
+                f"{canonical_old_genotype}"
+            )
+            if reference.name != expected_leaf_id:
+                errors.append(
+                    f"reference label {reference.name} must be {expected_leaf_id}"
+                )
             used_mapping_labels.add(metadata.matched_label)
             resolved_metadata[reference.name] = metadata
 
@@ -1027,6 +1084,7 @@ def build_tree_reference_tree(
         tree_sample_id,
         tree_svg,
         title,
+        genotype_map=genotype_map,
     )
 
     result.analysis_mode = (
@@ -1065,6 +1123,7 @@ def index() -> RedirectResponse:
     return RedirectResponse(FRONTEND_URL, status_code=307)
 
 
+@app.get("/api/health")
 @app.get("/health")
 def health() -> dict[str, Any]:
     tree_references = [
@@ -1213,10 +1272,13 @@ async def analyze(
         raise HTTPException(status_code=400, detail="quality_threshold must be between 0 and 40")
     if not 20 <= min_overlap <= 200:
         raise HTTPException(status_code=400, detail="min_overlap must be between 20 and 200")
-    if not 1 <= submission_sample_count <= 100:
+    if not 1 <= submission_sample_count <= MAX_BATCH_SAMPLE_COUNT:
         raise HTTPException(
             status_code=400,
-            detail="submission_sample_count must be between 1 and 100",
+            detail=(
+                "submission_sample_count must be between 1 and "
+                f"{MAX_BATCH_SAMPLE_COUNT}"
+            ),
         )
     if (
         REFERENCE_FASTA is None
@@ -1371,10 +1433,16 @@ async def create_batch_tree(
     if (
         not isinstance(parsed_job_ids, list)
         or not parsed_job_ids
-        or len(parsed_job_ids) > 100
+        or len(parsed_job_ids) > MAX_BATCH_SAMPLE_COUNT
         or any(not isinstance(job_id, str) for job_id in parsed_job_ids)
     ):
-        raise HTTPException(status_code=400, detail="job_ids must contain 1 to 100 analysis job IDs")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "job_ids must contain 1 to "
+                f"{MAX_BATCH_SAMPLE_COUNT} analysis job IDs"
+            ),
+        )
     unique_job_ids = list(dict.fromkeys(parsed_job_ids))
     source_submission_ids: set[str] = set()
     source_submission_sample_counts: set[int] = set()
@@ -2289,6 +2357,7 @@ def run_batch_tree_job(
             sample_ids,
             tree_svg,
             tree_title,
+            genotype_map=genotype_map,
         )
         with get_job_lock(job_dir):
             raise_if_cancelled(job_dir)
