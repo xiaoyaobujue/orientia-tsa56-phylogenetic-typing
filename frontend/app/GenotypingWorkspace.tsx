@@ -823,7 +823,7 @@ export function GenotypingWorkspace() {
             <h1>{t.brandTitle}</h1>
             <p>{t.brandSubtitle}</p>
           </div>
-          <span className="version-badge">V1.0</span>
+          <span className="version-badge">V1.1</span>
         </div>
         <nav aria-label={t.navLabel}>
           <div className="language-toggle" role="group" aria-label="Language / 语言">
@@ -1193,7 +1193,7 @@ export function GenotypingWorkspace() {
 
       <footer id="citation">
         <span>{t.researchOnly}</span>
-        <span>V1.0 · 60ref · MAFFT 7.525 · IQ-TREE 3.0.1</span>
+        <span>V1.1 · 60ref · MAFFT 7.525 · IQ-TREE 3.0.1</span>
       </footer>
     </main>
   );

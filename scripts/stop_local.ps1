@@ -91,4 +91,4 @@ foreach ($processId in ($processIds | Where-Object { $_ } | Select-Object -Uniqu
 }
 
 if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force }
-Write-Host "Public V1.0 local typing services stopped." -ForegroundColor Green
+Write-Host "Public V1.1 local typing services stopped." -ForegroundColor Green

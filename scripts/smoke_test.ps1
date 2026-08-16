@@ -10,7 +10,7 @@ $openapi = Invoke-RestMethod -Uri "http://127.0.0.1:8200/openapi.json" -TimeoutS
 $site = Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:3200/" -TimeoutSec 10
 
 if ($health.project_id -ne "orientia-tsa56-phylogenetic-typing") { throw "Unexpected API project identity." }
-if ($health.project_version -ne "1.0.2") { throw "Unexpected API version." }
+if ($health.project_version -ne "1.1.0") { throw "Unexpected API version." }
 if ($health.genotype_evidence_source -ne "phylogenetic_tree_only") { throw "Unexpected genotype evidence source." }
 if ($config.default_mode -ne "v1_strict_article") { throw "Strict V1 is not the fixed public mode." }
 if (@($config.available_modes).Count -ne 1) { throw "The public API advertises more than one mode." }
